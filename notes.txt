@@ -1,0 +1,123 @@
+Presentation slides for concepts:
+https://www.youtube.com/watch?v=Tm0Q5zr3FL4
+
+Step by Step Guide:
+https://www.youtube.com/watch?v=bU2NNFJ-UXA
+
+
+Docker Swarm:
+===================================
+sudo docker build -t syedatyab/ts-api:0.0.1 .
+sudo docker login (token as password)
+sudo docker push syedatyab/ts-api:0.0.1 (where syedatyab is the username and ts-api is the repo name, each repo can have many versions/tags like 0.0.1)
+
+On Master:
+==========
+sudo docker service create --name api-service --replicas 3 -p 80:8000 syedatyab/ts-api:0.0.1
+sudo docker service ls
+
+# Scale up and down by giving the number
+sudo docker service scale api-service=6  
+
+# Stop and remove the service
+sudo docker service rm api-service  
+
+# Update the service to a new version (Rolling Update)
+sudo docker service update --image syedatyab/ts-api:0.0.2 api-service
+
+# Rollback to the previous version
+sudo docker service rollback api-service
+
+# Remove unused containers from worker
+sudo docker container rm <cont_id>  # Has to be done on the worker nodes itself
+
+# Inspect a service
+sudo docker service inspect api-service
+sudo docker service inspect --pretty api-service
+
+# Display logs from stderr also, along with a filter for a specific node 
+sudo docker service logs api-service 2>&1 | grep api-service.4
+
+
+CI/CD Setup through Jenkins
+=====================================
+1. Install Jenkins on master node
+2. Make sure the version backup exists in /var/lib/jenkins/custom_jenkins/stored_version.txt
+3. Setup a pipeline with the following Groovy code:
+
+pipeline {
+    agent any
+
+    environment {
+        GIT_REPO_URL = 'https://github.com/CodelineAtyab/message-backup-api.git'
+        GIT_CREDENTIALS_ID = '0044d283-bd71-4184-801e-54561244d868'
+        DOCKER_IMAGE_NAME = 'syedatyab/msg-backup-api'
+        VERSION_FILE = "version.txt"
+        STORED_VERSION_FILE_PATH = "/var/lib/jenkins/custom_jenkins/stored_version.txt"
+    }
+
+    stages {
+        stage('Checkout and Pull') {
+            steps {
+                // Checkout the repository and pull the latest changes
+                git branch: 'main', url: env.GIT_REPO_URL, credentialsId: env.GIT_CREDENTIALS_ID
+            }
+        }
+        stage('Check Application Version') {
+            steps {
+                script {
+                    // Read the current version from version.txt
+                    def currentVersion = readFile("${VERSION_FILE}").trim()
+                    echo "Current version: ${currentVersion}"
+
+                    // Check if the stored version file exists
+                    def storedVersion = ""
+                    if (fileExists("${STORED_VERSION_FILE_PATH}")) {
+                        // Read the previous version from the stored version file
+                        storedVersion = readFile("${STORED_VERSION_FILE_PATH}").trim()
+                        echo "Stored version: ${storedVersion}"
+                    } else {
+                        echo "No stored version found."
+                    }
+                    
+                    // Compare the versions
+                    if (storedVersion == currentVersion) {
+                        echo "Current version is equal to stored version. Aborting the build."
+                        error "Aborting build due to no version update."
+                    } 
+                }
+            }
+        }
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    def currentVersion = readFile("${VERSION_FILE}").trim()
+                    echo "Docker Image Version: ${currentVersion}"
+                    
+                    // Build the Docker image
+                    sh(script: "docker build -t ${DOCKER_IMAGE_NAME}:${currentVersion} .")
+                }
+            }
+        }
+    }
+    
+    post {
+        success {
+            script {
+                // Save the current version to the stored version file
+                def currentVersion = readFile("${VERSION_FILE}").trim()
+                writeFile file: "${STORED_VERSION_FILE_PATH}", text: currentVersion
+                echo "Stored current version for future builds."
+            }
+        }
+        cleanup {
+            // Cleanup workspace
+            cleanWs()
+            echo "Workspace cleaned up."
+        }
+    }
+}
+
+Monitoring and Logging:
+===================================
+pip install prometheus-fastapi-instrumentator

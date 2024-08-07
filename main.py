@@ -11,7 +11,7 @@ from prometheus_fastapi_instrumentator import Instrumentator
 NODE_ID = str(uuid.uuid4())
 
 try:
-    NODE_ID = socket.gethostname()
+    NODE_ID = '-'.join([socket.gethostname(), NODE_ID])
 except Exception:
     print("Unable to get hostname")
     print(traceback.format_exc())

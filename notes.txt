@@ -99,6 +99,20 @@ pipeline {
                 }
             }
         }
+        stage('Push Docker Image') {
+            steps {
+                script {
+                    def currentVersion = readFile("${VERSION_FILE}").trim()
+                    
+                    withCredentials([usernamePassword(credentialsId: 'DOCKER_HUB_CREDENTIALS', passwordVariable: 'DOCKER_HUB_PASS', usernameVariable: 'DOCKER_HUB_USER_NAME')]) {
+                        sh(script: "echo ${DOCKER_HUB_PASS} | docker login -u ${DOCKER_HUB_USER_NAME} --password-stdin")
+                    }
+
+                    // Push the Docker image
+                    sh(script: "docker push ${DOCKER_IMAGE_NAME}:${currentVersion}")
+                }
+            }
+        }
     }
     
     post {
@@ -117,6 +131,9 @@ pipeline {
         }
     }
 }
+
+
+4. Add docker push logic in the final stage
 
 Monitoring and Logging:
 ===================================

@@ -138,3 +138,50 @@ pipeline {
 Monitoring and Logging:
 ===================================
 pip install prometheus-fastapi-instrumentator
+
+(Optional - Just Read) Follow the documentation to setup prometheus:
+
+1) https://prometheus.io/docs/guides/dockerswarm/
+	1.1) https://docs.docker.com/engine/daemon/prometheus/
+	
+
+# 1. Create another overlay network (virtual network as if all cont are on the same network) as we can not add prometheus cont to ingress (load balanced) network:
+docker network create --driver overlay mon-network
+
+# 2. Make api-service part of this new network also
+docker service update --network-add mon-network api-service
+
+# 3. Verify that all master and worker node's IPs are added as Peers in both of the networks
+docker network inspect mon-network
+docker network inspect ingress
+
+# 4. Create a prometheus.yml file on ./~ directory with the following content:
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: 'docker-swarm'
+    dns_sd_configs:
+      - names:
+          - 'tasks.api-service'
+        type: A
+        port: 8000
+		
+# 5. Create another service that only runs on the manager node. It would run prometheus server with the config defined in step 4:
+docker service create --name prometheus --mount type=bind,source=$(pwd)/prometheus.yml,target=/etc/prometheus/prometheus.yml \
+--network mon-network --publish 9090:9090 --constraint 'node.role == manager' prom/prometheus
+
+# 6. Goto <manager-ip>:9090 Status -> Targets
+Endpoints running on all nodes should be mentioned there. We can check number of requests by going into Graph and querying requests.
+
+# 7. Create another service that only runs on the manager node. It would run Grafana to visualize data metrics collected by prometheus
+docker service create \
+  --name grafana \
+  --publish 3000:3000 \
+  --network mon-network \
+  --constraint 'node.role == manager' \
+  grafana/grafana
+
+
+# 8. Add a Dashboard and then Visualization for certain metrics
+Default username and password is admin/admin
